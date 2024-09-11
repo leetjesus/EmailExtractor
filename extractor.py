@@ -1,10 +1,9 @@
-import os, re, argparse, django, time, subprocess, re
-from django.core.management import call_command
+import time, subprocess, django, argparse, re, os, subprocess
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'breachpalace.settings') 
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'breachpalace.settings')
 django.setup()
 
-# Models that will be used
+# Import models
 from backend_api.models import *
 from databreaches.models import *
 
@@ -13,7 +12,7 @@ class ModelCreator:
         self.modelName = modelName
         self.modelPath = modelPath
         self.adminPath = adminPath
-        
+
     def create_model(self):
         model_syntax = f"""
 class {self.modelName}Breach(models.Model):
@@ -26,12 +25,14 @@ class {self.modelName}Breach(models.Model):
         verbose_name = '{self.modelName}'
         verbose_name_plural = '{self.modelName}'
         unique_together = ('email_id', 'email')
-    
+
     def __str__(self):
         return str(self.email_id)\n
 """
         with open(self.modelPath, 'a') as file:
             file.write(model_syntax)
+            file.flush()
+            os.fsync(file.fileno())  # Ensure file write is completed
 
     def create_admin_model(self):
         admin_syntax = f"""\n
@@ -46,18 +47,31 @@ class {self.modelName}BreachAdmin(admin.ModelAdmin):
 """
         with open(self.adminPath, 'a') as file:
             file.write(admin_syntax)
+            file.flush() # compel buffer and write to file immediately
+            os.fsync(file.fileno())  # Ensure file write is completed
 
     def create_breach_info(self):
         try:
-            latest_id = emailList.objects.latest('email_id').id + 1
-        except emailList.DoesNotExist:
+            latest_id = breachInfo.objects.latest('breach_id').id + 1
+        except breachInfo.DoesNotExist:
             latest_id = 0 
         
-        breachInfo.objects.create(breach_id=latest_id, name=self.modelName, description='Hello worldTesting', BreachDate='2013-10-04', AddedDate='2013-12-04', emailCount='2900')
-    
+        breachInfo.objects.create(
+            breach_id=latest_id, 
+            name=self.modelName, 
+            description='Hello worldTesting', 
+            BreachDate='2013-10-04', 
+            AddedDate='2013-12-04', 
+            emailCount='2900'
+        )
+
     def make_migrations(self):
-        call_command('makemigrations')
-        call_command('migrate')
+        # using subprocess because call_command wont identify file changes fast enough
+        time.sleep(1)
+        print("Making migrations...")
+        result = subprocess.run(['python', 'manage.py', 'makemigrations', 'databreaches'], capture_output=True, text=True)
+        print("Applying migrations...")
+        result = subprocess.run(['python', 'manage.py', 'migrate', 'databreaches'], capture_output=True, text=True)
 
     def verify_paths(self):
         isModel = os.path.isfile(self.modelPath)
@@ -66,10 +80,10 @@ class {self.modelName}BreachAdmin(admin.ModelAdmin):
         print(f"Model path exists: {isModel}")
         print(f"Admin path exists: {isAdmin}")
 
-        if isAdmin and isModel == True:
+        if isAdmin and isModel:
            self.create_model()
            self.create_admin_model()
-        #    self.create_breach_info()
+           self.create_breach_info()
            self.make_migrations()
 
 class EmailExtractor:
@@ -96,7 +110,7 @@ class EmailExtractor:
         
     def remove_duplicate_emails(self):
         lines = open('extractedEmails.txt', 'r').readlines()
-        lines_set = set(lines) # removing duplicates using set()
+        lines_set = set(lines)  # removing duplicates using set()
 
         with open('output.txt', 'w') as output:
             for line in lines_set:
@@ -104,20 +118,17 @@ class EmailExtractor:
 
 def main():
     parser = argparse.ArgumentParser(description="Admin path checker")
-    # Creating models should only be required if the user specifies it
-    # Model Creator (When the model creator is triggered on this means that the user will consents to adding data to postges.sql database )
-    parser.add_argument('-f', '--filename', required=True, help='Filename for the breach data youll be using.')
+    parser.add_argument('-f', '--filename', required=True, help='Filename for the breach data you’ll be using.')
     parser.add_argument('-a', '--adminpath', required=True, help='File path for the admin.py panel in Django app.')
     parser.add_argument('-mN', '--modelname', required=True, help='Enter model name for data breach.')
     parser.add_argument('-m', '--modelpath', required=True, help='File path for models.py in Django app.')
     args = parser.parse_args()
     
     # Instantiate EmailExtractor with email_extractor() and remove_duplicate_emails()
-    Extractorobj = EmailExtractor(args.filename)
-    Extractorobj.email_extractor()
-    Extractorobj.remove_duplicate_emails()
-
-    # Instantiate ModelCreator with adminPath and run verify_paths()
+    # Extractorobj = EmailExtractor(args.filename)
+    # Extractorobj.email_extractor()
+    # Extractorobj.remove_duplicate_emails()
+    
     model_creator = ModelCreator(args.modelname.capitalize(), args.modelpath, args.adminpath)
     model_creator.verify_paths()
     
