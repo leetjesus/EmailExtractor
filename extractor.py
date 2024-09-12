@@ -1,4 +1,4 @@
-import time, subprocess, django, argparse, re, os, subprocess, importlib, sys
+import time, subprocess, django, argparse, re, os, subprocess, sys
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'breachpalace.settings')
 django.setup()
