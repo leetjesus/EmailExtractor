@@ -1,4 +1,4 @@
-import time, subprocess, django, argparse, re, os, subprocess
+import time, subprocess, django, argparse, re, os, subprocess, importlib, sys
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'breachpalace.settings')
 django.setup()
@@ -122,15 +122,20 @@ def main():
     parser.add_argument('-a', '--adminpath', required=True, help='File path for the admin.py panel in Django app.')
     parser.add_argument('-mN', '--modelname', required=True, help='Enter model name for data breach.')
     parser.add_argument('-m', '--modelpath', required=True, help='File path for models.py in Django app.')
+    parser.add_argument('-e', '--sendEmails', help='Will send all emails from output.txt to models in django')
     args = parser.parse_args()
     
-    # Instantiate EmailExtractor with email_extractor() and remove_duplicate_emails()
-    # Extractorobj = EmailExtractor(args.filename)
-    # Extractorobj.email_extractor()
-    # Extractorobj.remove_duplicate_emails()
-    
+    # Creating models
     model_creator = ModelCreator(args.modelname.capitalize(), args.modelpath, args.adminpath)
     model_creator.verify_paths()
+
+    # Instantiate EmailExtractor with email_extractor() and remove_duplicate_emails()
+    Extractorobj = EmailExtractor(args.filename)
+    Extractorobj.email_extractor()
+    Extractorobj.remove_duplicate_emails()
     
+    # Implement if args true here
+    subprocess.run(['python', 'email_adder.py', '-mN', f'{args.modelname}', '-e', 'true'])
+
 if __name__ == "__main__":
     main()
