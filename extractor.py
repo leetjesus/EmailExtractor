@@ -1,11 +1,13 @@
 import time, subprocess, django, argparse, re, os, subprocess, sys
+from chardet.universaldetector import UniversalDetector
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'breachpalace.settings')
-django.setup()
+
+# os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'breachpalace.settings')
+# django.setup()
 
 # Import models
-from backend_api.models import *
-from databreaches.models import *
+# from backend_api.models import *
+# from databreaches.models import *
 
 class ModelCreator:
     def __init__(self, modelName, modelPath, adminPath):
@@ -89,53 +91,117 @@ class {self.modelName}BreachAdmin(admin.ModelAdmin):
 class EmailExtractor:
     def __init__(self, filename):
         self.filename = filename
-    
+
     def email_extractor(self):
         validate_email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
+        valid_filenames = []
+        
+        print('Validating filenames....')
+       
+       # Checking if file's exist first
+        for filename in self.filename:
+            check_file = os.path.isfile(filename)
+            if check_file:
+                valid_filenames.append(filename)
+        
+        print(valid_filenames)
 
-        with open(self.filename, 'r') as breach_file:
-            output = open('extractedEmails.txt', 'a')
+        user_validation = input('Are the found files correct? Y/N:')
+        
+        line_count = 0
 
-            Lines = breach_file.readlines()
-            line_count = 0
+        if user_validation.upper() == 'Y' or 'YES':
+            # Determine the file uni code type
+            file_info = {}
+            detector = UniversalDetector()
+            for filename in valid_filenames:
+                detector.reset()
+                for line in open(filename, 'rb'):
+                    detector.feed(line)
+                    if detector.done: break
+                detector.close()
+                file_info[filename] = detector.result['encoding']
+            print(file_info)
 
-            for line in Lines:
-                line_count += 1
-                pattern_match = re.search(validate_email_pattern, line)
-                if pattern_match:
-                    print(f"Line {line_count}: {pattern_match.group()}")
-                    output.write(str(pattern_match.group()) + '\n')
-            
-            output.close()
+            for file, uni_type in file_info.items():
+                with open(file, 'r', encoding=uni_type) as breach_file:
+                    output = open('BULKEXTRACT.txt', 'a')
+                    Lines = breach_file.readlines()
+                    for line in Lines:
+                        line_count += 1
+                        pattern_match = re.search(validate_email_pattern, line)
+                        if pattern_match:
+                            output.write(str(pattern_match.group()) + '\n')
+                    output.close()
+                    print(f'Completed {file}: Email count: {line_count}')
+        else:
+            print("Enter the filenames in correctly.")
         
     def remove_duplicate_emails(self):
-        lines = open('extractedEmails.txt', 'r').readlines()
+        lines = open('BULKEXTRACT.txt', 'r').readlines()
         lines_set = set(lines)  # removing duplicates using set()
-
+        
+        line_count = 0
+        
         with open('output.txt', 'w') as output:
             for line in lines_set:
+                line_count += 1
                 output.write(line)
 
+        print(f'Total email count without duplicates: {line_count}')
+
 def main():
-    parser = argparse.ArgumentParser(description="Admin path checker")
-    parser.add_argument('-f', '--filename', required=True, help='Filename for the breach data you’ll be using.')
-    parser.add_argument('-a', '--adminpath', required=True, help='File path for the admin.py panel in Django app.')
-    parser.add_argument('-mN', '--modelname', required=True, help='Enter model name for data breach.')
-    parser.add_argument('-m', '--modelpath', required=True, help='File path for models.py in Django app.')
-    parser.add_argument('-e', '--sendEmails', help='Will send all emails from output.txt to models in django')
+
+    def list_of_strings(arg):
+        return arg.split(',')
+
+    parser = argparse.ArgumentParser(description='Checking to see status')
+    parser.add_argument('-f', '--filename', action='store_true', help='Enter a filename for the breache(s) files.')
+    parser.add_argument('-m', '--model', action='store_true', help='Enable model mode')
+    parser.add_argument('-e', '--email', action='store_true', help='Enable sending output.txt to django db(models).')
+    
+    parser.add_argument('-fP', '--filepath', type=list_of_strings, help='Filename for the breach data you’ll be using.')
+    parser.add_argument('-aP', '--adminpath', help='File path for the admin.py panel in Django app.')
+    parser.add_argument('-mN', '--modelname', help='Enter model name for data breach.')
+    parser.add_argument('-mP', '--modelpath', help='File path for models.py in Django app.')
+        
     args = parser.parse_args()
     
-    # Creating models
-    model_creator = ModelCreator(args.modelname.capitalize(), args.modelpath, args.adminpath)
-    model_creator.verify_paths()
+    if args.filename and args.model and args.email:
+        model_creator = ModelCreator(args.modelname.capitalize(), args.modelpath, args.adminpath)
+        model_creator.verify_paths()
+        
+        Extractorobj = EmailExtractor(args.filename)
+        Extractorobj.email_extractor()
+        Extractorobj.remove_duplicate_emails()
+        
+        subprocess.run(['python', 'email_adder.py', '-mN', f'{args.modelname}', '-e', 'true'])
 
-    # Instantiate EmailExtractor with email_extractor() and remove_duplicate_emails()
-    Extractorobj = EmailExtractor(args.filename)
-    Extractorobj.email_extractor()
-    Extractorobj.remove_duplicate_emails()
+    elif args.filename and args.model:
+        model_creator = ModelCreator(args.modelname.capitalize(), args.modelpath, args.adminpath)
+        model_creator.verify_paths()
+
+        Extractorobj = EmailExtractor(args.filename)
+        Extractorobj.email_extractor()
+        Extractorobj.remove_duplicate_emails()
     
-    # Implement if args true here
-    subprocess.run(['python', 'email_adder.py', '-mN', f'{args.modelname}', '-e', 'true'])
+    elif args.filename and args.email:
+        print('Models needed please try again...')
+    
+    elif args.filename:
+        Extractorobj = EmailExtractor(args.filepath)
+        Extractorobj.email_extractor()
+        Extractorobj.remove_duplicate_emails()
+    
+    elif args.model:
+        model_creator = ModelCreator(args.modelname.capitalize(), args.modelpath, args.adminpath)
+        model_creator.verify_paths()
+    
+    elif args.email:
+        subprocess.run(['python', 'email_adder.py', '-mN', f'{args.modelname}', '-e', 'true'])
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('\nExiting...')
