@@ -1,7 +1,6 @@
 import time, subprocess, django, argparse, re, os, subprocess, sys
 from chardet.universaldetector import UniversalDetector
-
-
+import pathlib, csv
 # os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'breachpalace.settings')
 # django.setup()
 
@@ -105,9 +104,8 @@ class EmailExtractor:
                 valid_filenames.append(filename)
         
         print(valid_filenames)
-
         user_validation = input('Are the found files correct? Y/N:')
-        
+          
         line_count = 0
 
         if user_validation.upper() == 'Y' or 'YES':
@@ -116,24 +114,42 @@ class EmailExtractor:
             detector = UniversalDetector()
             for filename in valid_filenames:
                 detector.reset()
+                print('Detetcing unicode...')
                 for line in open(filename, 'rb'):
                     detector.feed(line)
                     if detector.done: break
                 detector.close()
                 file_info[filename] = detector.result['encoding']
-            print(file_info)
 
             for file, uni_type in file_info.items():
-                with open(file, 'r', encoding=uni_type) as breach_file:
-                    output = open('BULKEXTRACT.txt', 'a')
-                    Lines = breach_file.readlines()
-                    for line in Lines:
-                        line_count += 1
-                        pattern_match = re.search(validate_email_pattern, line)
-                        if pattern_match:
-                            output.write(str(pattern_match.group()) + '\n')
-                    output.close()
-                    print(f'Completed {file}: Email count: {line_count}')
+                # Detect if the file extension contains a csv or if its a txt file
+                file_exten_check = pathlib.Path(file).suffix
+                if file_exten_check == '.csv':
+                    # CSV READING
+                    with open(file, 'r', encoding=uni_type) as breach_file:
+                        csvreader = csv.reader(breach_file)
+                        output = open('BULKEXTRACT.txt', 'a')
+                        for line in csvreader:
+                            for i in line:
+                                pattern_match = re.search(validate_email_pattern, i)
+                                if pattern_match:
+                                    line_count += 1
+                                    output.write(str(i) + '\n')
+                        output.close()
+                        print(f'Completed {file}: Email count: {line_count}')
+
+                elif file_exten_check == '.txt':
+                    # TXT READING
+                    with open(file, 'r', encoding=uni_type) as breach_file:
+                        output = open('BULKEXTRACT.txt', 'a')
+                        Lines = breach_file.readlines()
+                        for line in Lines:
+                            line_count += 1
+                            pattern_match = re.search(validate_email_pattern, line)
+                            if pattern_match:
+                                output.write(str(pattern_match.group()) + '\n')
+                        output.close()
+                        print(f'Completed {file}: Email count: {line_count}')
         else:
             print("Enter the filenames in correctly.")
         
