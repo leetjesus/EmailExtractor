@@ -1,12 +1,41 @@
 import time, subprocess, django, argparse, re, os, subprocess, sys
 from chardet.universaldetector import UniversalDetector
 import pathlib, csv
-# os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'breachpalace.settings')
-# django.setup()
 
-# Import models
-# from backend_api.models import *
-# from databreaches.models import *
+# Hard coded for now... possibly used environmentle variable
+sys.path.append('/home/leetjesus/Desktop/breachpalacev1')
+os.environ['DJANGO_SETTINGS_MODULE'] = 'breachpalace.settings'
+
+# Setup Django
+django.setup()
+
+from backend_api.models import *  
+from databreaches.models import *
+
+class BreachDetails:
+    def __init__(self, modelName, description, breachDate, addedDate, emailCount):
+        self.modelName = modelName
+        self.description = description
+        self.breachDate = breachDate
+        self.addedDate = addedDate
+        self.emailCount = emailCount
+
+    def create_breach_info(self):
+        try:
+            latest_id = breachInfo.objects.latest('breach_id').id + 1
+        except breachInfo.DoesNotExist:
+            latest_id = 0 
+        
+        print('Creating model information...')
+        # Missing model name!
+        breachInfo.objects.create(
+            breach_id=latest_id, 
+            name=self.modelName, 
+            description=self.description, 
+            BreachDate=self.breachDate,
+            AddedDate=self.addedDate, 
+            emailCount=self.emailCount
+        )
 
 class ModelCreator:
     def __init__(self, modelName, modelPath, adminPath):
@@ -51,40 +80,23 @@ class {self.modelName}BreachAdmin(admin.ModelAdmin):
             file.flush() # compel buffer and write to file immediately
             os.fsync(file.fileno())  # Ensure file write is completed
 
-    def create_breach_info(self):
-        try:
-            latest_id = breachInfo.objects.latest('breach_id').id + 1
-        except breachInfo.DoesNotExist:
-            latest_id = 0 
-        
-        breachInfo.objects.create(
-            breach_id=latest_id, 
-            name=self.modelName, 
-            description='Hello worldTesting', 
-            BreachDate='2013-10-04', 
-            AddedDate='2013-12-04', 
-            emailCount='2900'
-        )
-
     def make_migrations(self):
         # using subprocess because call_command wont identify file changes fast enough
+        # If I'm not mistaken this needs to be located within a different file, because this file technically is encapsulated in time 
         time.sleep(1)
+        path = '/home/leetjesus/Desktop/breachpalacev1'
         print("Making migrations...")
-        result = subprocess.run(['python', 'manage.py', 'makemigrations', 'databreaches'], capture_output=True, text=True)
+        result = subprocess.run(['python', 'manage.py', 'makemigrations', 'databreaches'], capture_output=True, text=True, cwd=path)
         print("Applying migrations...")
-        result = subprocess.run(['python', 'manage.py', 'migrate', 'databreaches'], capture_output=True, text=True)
+        result = subprocess.run(['python', 'manage.py', 'migrate', 'databreaches'], capture_output=True, text=True, cwd=path)
 
     def verify_paths(self):
         isModel = os.path.isfile(self.modelPath)
         isAdmin = os.path.isfile(self.adminPath)
 
-        print(f"Model path exists: {isModel}")
-        print(f"Admin path exists: {isAdmin}")
-
         if isAdmin and isModel:
            self.create_model()
            self.create_admin_model()
-           self.create_breach_info()
            self.make_migrations()
 
 class EmailExtractor:
@@ -167,7 +179,6 @@ class EmailExtractor:
         print(f'Total email count without duplicates: {line_count}')
 
 def main():
-
     def list_of_strings(arg):
         return arg.split(',')
 
@@ -175,15 +186,22 @@ def main():
     parser.add_argument('-f', '--filename', action='store_true', help='Enter a filename for the breache(s) files.')
     parser.add_argument('-m', '--model', action='store_true', help='Enable model mode')
     parser.add_argument('-e', '--email', action='store_true', help='Enable sending output.txt to django db(models).')
-    
+    parser.add_argument('-bi', '--breachinfo', action='store_true', help='Create description, email count, added date etc based on the breach')
+
     parser.add_argument('-fP', '--filepath', type=list_of_strings, help='Filename for the breach data you’ll be using.')
     parser.add_argument('-aP', '--adminpath', help='File path for the admin.py panel in Django app.')
     parser.add_argument('-mN', '--modelname', help='Enter model name for data breach.')
     parser.add_argument('-mP', '--modelpath', help='File path for models.py in Django app.')
-        
+    
+    
+    parser.add_argument('-d', '--description', help='Breach description required')
+    parser.add_argument('-bd', '--breachdate', help='Date of when the breach happened')
+    parser.add_argument('-ad', '--addedDate', help='Date of when breach was added')
+    parser.add_argument('-ec', '--emailCount', help='Total number of emails found in breach')
+
     args = parser.parse_args()
     
-    if args.filename and args.model and args.email:
+    if args.filename and args.model and args.email and args.breachinfo:
         model_creator = ModelCreator(args.modelname.capitalize(), args.modelpath, args.adminpath)
         model_creator.verify_paths()
         
@@ -191,9 +209,13 @@ def main():
         Extractorobj.email_extractor()
         Extractorobj.remove_duplicate_emails()
         
+        breach_Details = BreachDetails(args.modelname.capitalize(), args.description, args.breachdate, args.addedDate, args.emailCount)
+        breach_Details.create_breach_info()
+
         subprocess.run(['python', 'email_adder.py', '-mN', f'{args.modelname}', '-e', 'true'])
 
     elif args.filename and args.model:
+        # Extracts email and creates models only
         model_creator = ModelCreator(args.modelname.capitalize(), args.modelpath, args.adminpath)
         model_creator.verify_paths()
 
@@ -204,16 +226,32 @@ def main():
     elif args.filename and args.email:
         print('Models needed please try again...')
     
+    elif args.model and args.breachinfo:
+        # Creates breach information and model
+        breach_Details = BreachDetails(args.modelname.capitalize(), args.description, args.breachdate, args.addedDate, args.emailCount)
+        breach_Details.create_breach_info()
+
+        model_creator = ModelCreator(args.modelname.capitalize(), args.modelpath, args.adminpath)
+        model_creator.verify_paths()
+
     elif args.filename:
+        # Extracts emails only
         Extractorobj = EmailExtractor(args.filepath)
         Extractorobj.email_extractor()
         Extractorobj.remove_duplicate_emails()
     
     elif args.model:
+        # Creates models only
         model_creator = ModelCreator(args.modelname.capitalize(), args.modelpath, args.adminpath)
         model_creator.verify_paths()
+
+    elif args.breachinfo:
+        # Creates breach info about model only
+        breach_Details = BreachDetails(args.modelname.capitalize(), args.description, args.breachdate, args.addedDate, args.emailCount)
+        breach_Details.create_breach_info()
     
     elif args.email:
+        # Will send output.txt file to model only
         subprocess.run(['python', 'email_adder.py', '-mN', f'{args.modelname}', '-e', 'true'])
 
 if __name__ == "__main__":
