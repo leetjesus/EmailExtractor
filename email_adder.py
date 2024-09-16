@@ -1,6 +1,7 @@
 import time, subprocess, django, argparse, re, os, subprocess, sys
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'breachpalace.settings')
+sys.path.append('/home/leetjesus/Desktop/breachpalacev1')
+os.environ['DJANGO_SETTINGS_MODULE'] = 'breachpalace.settings'
 django.setup()
 
 # Import models
