@@ -1,16 +1,18 @@
 import time, subprocess, django, argparse, re, os, subprocess, sys
 from chardet.universaldetector import UniversalDetector
-import pathlib, csv
+import pathlib, csv, glob
 
 # Hard coded for now... possibly used environmentle variable
-sys.path.append('/home/leetjesus/Desktop/breachpalacev1')
-os.environ['DJANGO_SETTINGS_MODULE'] = 'breachpalace.settings'
+#sys.path.append('/home/leetjesus/Desktop/breachpalacev1')
+#os.environ['DJANGO_SETTINGS_MODULE'] = 'breachpalace.settings'
 
 # Setup Django
-django.setup()
+#django.setup()
 
-from backend_api.models import *  
-from databreaches.models import *
+#from backend_api.models import *  
+#from databreaches.models import *
+
+#csv.field_size_limit(100000000)
 
 class BreachDetails:
     def __init__(self, modelName, description, breachDate, addedDate, emailCount):
@@ -110,11 +112,14 @@ class EmailExtractor:
         print('Validating filenames....')
        
        # Checking if file's exist first
+       # Adding whild cards to self.filename
         for filename in self.filename:
             check_file = os.path.isfile(filename)
             if check_file:
                 valid_filenames.append(filename)
-        
+            elif filename == '*.csv':
+                valid_filenames = glob.glob('*.csv')
+
         print(valid_filenames)
         user_validation = input('Are the found files correct? Y/N:')
           
@@ -124,9 +129,9 @@ class EmailExtractor:
             # Determine the file uni code type
             file_info = {}
             detector = UniversalDetector()
+            print('Detecting unicodes...')
             for filename in valid_filenames:
                 detector.reset()
-                print('Detetcing unicode...')
                 for line in open(filename, 'rb'):
                     detector.feed(line)
                     if detector.done: break
@@ -141,13 +146,16 @@ class EmailExtractor:
                     with open(file, 'r', encoding=uni_type) as breach_file:
                         csvreader = csv.reader(breach_file)
                         output = open('BULKEXTRACT.txt', 'a')
-                        for line in csvreader:
-                            for i in line:
-                                pattern_match = re.search(validate_email_pattern, i)
-                                if pattern_match:
-                                    line_count += 1
-                                    output.write(str(i) + '\n')
-                        output.close()
+                        try:
+                            for line in csvreader:
+                                for i in line:
+                                    pattern_match = re.search(validate_email_pattern, i)
+                                    if pattern_match:
+                                        line_count += 1
+                                        output.write(str(pattern_match.group()) + '\n')
+                            output.close()
+                        except csv.Error:
+                            pass
                         print(f'Completed {file}: Email count: {line_count}')
 
                 elif file_exten_check == '.txt':
@@ -162,6 +170,9 @@ class EmailExtractor:
                                 output.write(str(pattern_match.group()) + '\n')
                         output.close()
                         print(f'Completed {file}: Email count: {line_count}')
+
+        elif user_validation.upper() == 'N' or 'NO':
+            print('Exiting...')
         else:
             print("Enter the filenames in correctly.")
         
