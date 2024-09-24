@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import time, subprocess, django, argparse, re, os, subprocess, sys
 from chardet.universaldetector import UniversalDetector
 import pathlib, csv, glob
@@ -9,7 +10,7 @@ import pathlib, csv, glob
 # Setup Django
 #django.setup()
 
-#from backend_api.models import *  
+#from backend_api.models import *
 #from databreaches.models import *
 
 #csv.field_size_limit(100000000)
@@ -26,16 +27,16 @@ class BreachDetails:
         try:
             latest_id = breachInfo.objects.latest('breach_id').id + 1
         except breachInfo.DoesNotExist:
-            latest_id = 0 
-        
+            latest_id = 0
+
         print('Creating model information...')
         # Missing model name!
         breachInfo.objects.create(
-            breach_id=latest_id, 
-            name=self.modelName, 
-            description=self.description, 
+            breach_id=latest_id,
+            name=self.modelName,
+            description=self.description,
             BreachDate=self.breachDate,
-            AddedDate=self.addedDate, 
+            AddedDate=self.addedDate,
             emailCount=self.emailCount
         )
 
@@ -84,7 +85,6 @@ class {self.modelName}BreachAdmin(admin.ModelAdmin):
 
     def make_migrations(self):
         # using subprocess because call_command wont identify file changes fast enough
-        # If I'm not mistaken this needs to be located within a different file, because this file technically is encapsulated in time 
         time.sleep(1)
         path = '/home/leetjesus/Desktop/breachpalacev1'
         print("Making migrations...")
@@ -108,9 +108,9 @@ class EmailExtractor:
     def email_extractor(self):
         validate_email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
         valid_filenames = []
-        
+
         print('Validating filenames....')
-       
+
        # Checking if file's exist first
        # Adding whild cards to self.filename
         for filename in self.filename:
@@ -122,7 +122,7 @@ class EmailExtractor:
 
         print(valid_filenames)
         user_validation = input('Are the found files correct? Y/N:')
-          
+
         line_count = 0
 
         if user_validation.upper() == 'Y' or 'YES':
@@ -160,8 +160,8 @@ class EmailExtractor:
 
                 elif file_exten_check == '.txt':
                     # TXT READING
-                    with open(file, 'r', encoding=uni_type) as breach_file:
-                        output = open('BULKEXTRACT.txt', 'a')
+                    with open(file, 'r', encoding=uni_type, errors='ignore') as breach_file:
+                        output = open('BULKEXTRACT.txt', 'a') 
                         Lines = breach_file.readlines()
                         for line in Lines:
                             line_count += 1
@@ -175,13 +175,13 @@ class EmailExtractor:
             print('Exiting...')
         else:
             print("Enter the filenames in correctly.")
-        
+
     def remove_duplicate_emails(self):
         lines = open('BULKEXTRACT.txt', 'r').readlines()
         lines_set = set(lines)  # removing duplicates using set()
-        
+
         line_count = 0
-        
+
         with open('output.txt', 'w') as output:
             for line in lines_set:
                 line_count += 1
@@ -203,23 +203,23 @@ def main():
     parser.add_argument('-aP', '--adminpath', help='File path for the admin.py panel in Django app.')
     parser.add_argument('-mN', '--modelname', help='Enter model name for data breach.')
     parser.add_argument('-mP', '--modelpath', help='File path for models.py in Django app.')
-    
-    
+
+
     parser.add_argument('-d', '--description', help='Breach description required')
     parser.add_argument('-bd', '--breachdate', help='Date of when the breach happened')
     parser.add_argument('-ad', '--addedDate', help='Date of when breach was added')
     parser.add_argument('-ec', '--emailCount', help='Total number of emails found in breach')
 
     args = parser.parse_args()
-    
+
     if args.filename and args.model and args.email and args.breachinfo:
         model_creator = ModelCreator(args.modelname.capitalize(), args.modelpath, args.adminpath)
         model_creator.verify_paths()
-        
+
         Extractorobj = EmailExtractor(args.filename)
         Extractorobj.email_extractor()
         Extractorobj.remove_duplicate_emails()
-        
+
         breach_Details = BreachDetails(args.modelname.capitalize(), args.description, args.breachdate, args.addedDate, args.emailCount)
         breach_Details.create_breach_info()
 
@@ -233,10 +233,10 @@ def main():
         Extractorobj = EmailExtractor(args.filename)
         Extractorobj.email_extractor()
         Extractorobj.remove_duplicate_emails()
-    
+
     elif args.filename and args.email:
         print('Models needed please try again...')
-    
+
     elif args.model and args.breachinfo:
         # Creates breach information and model
         breach_Details = BreachDetails(args.modelname.capitalize(), args.description, args.breachdate, args.addedDate, args.emailCount)
@@ -250,7 +250,7 @@ def main():
         Extractorobj = EmailExtractor(args.filepath)
         Extractorobj.email_extractor()
         Extractorobj.remove_duplicate_emails()
-    
+
     elif args.model:
         # Creates models only
         model_creator = ModelCreator(args.modelname.capitalize(), args.modelpath, args.adminpath)
@@ -260,7 +260,7 @@ def main():
         # Creates breach info about model only
         breach_Details = BreachDetails(args.modelname.capitalize(), args.description, args.breachdate, args.addedDate, args.emailCount)
         breach_Details.create_breach_info()
-    
+
     elif args.email:
         # Will send output.txt file to model only
         subprocess.run(['python', 'email_adder.py', '-mN', f'{args.modelname}', '-e', 'true'])
