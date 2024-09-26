@@ -4,14 +4,14 @@ from chardet.universaldetector import UniversalDetector
 import pathlib, csv, glob
 
 # Hard coded for now... possibly used environmentle variable
-#sys.path.append('/home/leetjesus/Desktop/breachpalacev1')
-#os.environ['DJANGO_SETTINGS_MODULE'] = 'breachpalace.settings'
+sys.path.append('/home/leetjesus/Desktop/breachpalacev1')
+os.environ['DJANGO_SETTINGS_MODULE'] = 'breachpalace.settings'
 
 # Setup Django
-#django.setup()
+django.setup()
 
-#from backend_api.models import *
-#from databreaches.models import *
+from backend_api.models import *
+from databreaches.models import *
 
 #csv.field_size_limit(100000000)
 
@@ -85,6 +85,7 @@ class {self.modelName}BreachAdmin(admin.ModelAdmin):
 
     def make_migrations(self):
         # using subprocess because call_command wont identify file changes fast enough
+        # If I'm not mistaken this needs to be located within a different file, because this file technically is encapsulated in time
         time.sleep(1)
         path = '/home/leetjesus/Desktop/breachpalacev1'
         print("Making migrations...")
@@ -119,6 +120,8 @@ class EmailExtractor:
                 valid_filenames.append(filename)
             elif filename == '*.csv':
                 valid_filenames = glob.glob('*.csv')
+            elif filename == '*.txt':
+                valid_filenames = glob.glob('*.txt')
 
         print(valid_filenames)
         user_validation = input('Are the found files correct? Y/N:')
