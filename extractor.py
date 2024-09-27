@@ -29,8 +29,7 @@ class BreachDetails:
         except breachInfo.DoesNotExist:
             latest_id = 0
 
-        print('Creating model information...')
-        # Missing model name!
+        print('Creating data breach information...') 
         breachInfo.objects.create(
             breach_id=latest_id,
             name=self.modelName,
@@ -176,6 +175,7 @@ class EmailExtractor:
 
         elif user_validation.upper() == 'N' or 'NO':
             print('Exiting...')
+            sys.exit(0)
         else:
             print("Enter the filenames in correctly.")
 
