@@ -1,9 +1,9 @@
 from chardet.universaldetector import UniversalDetector
+from datetime import date
 import pathlib
 import re
 import csv
-import timeit
-import mmap 
+import os
 
 def identify_file_suffix(filename):
     file_extension_type = pathlib.Path(str(filename)).suffix
@@ -14,6 +14,8 @@ def identify_file_suffix(filename):
         return 'TXT'
     elif file_extension_type == '.sql':
         return 'SQL'
+    elif file_extension_type == '.json':
+        return 'JSON'
 
 def identify_hash_type(hash_string):
     """Identifies the type of a hash based on its length."""
@@ -50,7 +52,7 @@ def identify_encoding(filename):
 def identify_password(line):
     # To-do: Create a better regex for finding passwords
     password_pattern = r'(?=.*[A-Z])(?=.*[a-z])(?=.*[0-9])(?=.*[^a-zA-Z0-9])(?!.*@)([A-Za-z0-9!@#$%^&*()_+={}\[\]:;"\'<>,.?/~`-]{6,})'
-    
+
     password_match = re.search(password_pattern, line)
     if password_match:
         password = str(password_match.group(1))
@@ -95,12 +97,27 @@ def parsing_lines(line, file_suffix, data):
                 data[email]["hashes"].add(hash_string.replace("'", ''))
                 data[email]["line"] = str(line)
 
+def generate_file_name():
+    today = date.today()
+    base_name = f"{today}-dataset"
+    extension = ".csv"
+
+    file_name = f"{base_name}{extension}"
+    counter = 0
+
+    while os.path.exists(file_name):
+        file_name = f"{base_name}{counter}{extension}"
+        
+        counter += 1
+
+    return file_name
+
 def write_data_set(data):
     for email, hashes in data.items():
         string = ''.join(hashes['hashes'])
-        print(string[1:].replace(" ", '-'))
-    
-    with open('hashes-stored.csv', mode='w', newline='') as file:
+        # print(string[1:].replace(" ", '-'))
+    filename = generate_file_name()
+    with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(['email', 'hashes', 'line'])
 
@@ -113,11 +130,16 @@ def reading_files(filename):
     encoder = identify_encoding(filename=filename)
     file_suffix = identify_file_suffix(filename=filename)
     
+    count = 0
+
     with open(str(filename), 'r', encoding=str(encoder)) as file:
         lines = file.readlines()
         for line in lines:
             parsing_lines(line=line, file_suffix=file_suffix, data=data)
+            count += 1
+
+            if count == 100:
+                break
+
 
     write_data_set(data)
-    
-reading_files(filename='')
