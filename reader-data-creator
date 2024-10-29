@@ -125,13 +125,6 @@ def write_data_set(data):
             hash_value = ''.join(hashes['hashes'])
             writer.writerow([email, hash_value[1:].replace(" ", '-'), hashes['line']]) 
 
-def read_in_chunks(file_object, chunk_size=1024):
-    while True:
-        data = file_object.read(chunk_size)
-        if not data:
-            break
-        yield data
-
 def reading_files(filename):
     data = {}
     encoder = identify_encoding(filename=filename)
