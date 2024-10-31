@@ -228,8 +228,22 @@ class BulkEmailAdder:
         except django.db.utils.IntegrityError as e:
             print(e)
 
-# database_operations = BulkEmailAdder(filename='2024-10-29-dataset.csv', modelName='EmailhashtestBreach')
-# database_operations.main()
+def main():
+    parser = argparse.ArgumentParser(description="This script is to be used for creating datasets from data dumps.")
+    parser.add_argument('-m', '--modelname', help='Enter the model name that will be used for receiving data from dataset')
+    parser.add_argument('-d', '--dataset', help='Enter dataset filename which will be used for sending information to django')
+    parser.add_argument('-f', '--filename', help='Enter breach data filename, emails, passwords and lines will be extracted from this file')
+    args = parser.parse_args()
+    
+    if args.dataset:
+        database_operations = BulkEmailAdder(filename=args.dataset, modelName=args.modelname.capitalize())
+        database_operations.main()
+    elif args.filename:
+        file_opertations = DataSetCrator(filename=args.filename)
+        file_opertations.reading_files()
+
+if __name__ == "__main__":
+    main()
 
 # file_opertations = DataSetCrator(filename='intimshop.ru.sql')
 # file_opertations.reading_files()
