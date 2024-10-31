@@ -244,6 +244,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# file_opertations = DataSetCrator(filename='intimshop.ru.sql')
-# file_opertations.reading_files()
