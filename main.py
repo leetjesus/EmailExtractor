@@ -16,6 +16,7 @@ from databreaches.models import *
 class DataSetCrator():
     def __init__(self, filename):
         self.filename = filename
+        self.hash_list = []
     
     def identify_file_suffix(self):
         file_extension_type = pathlib.Path(str(self.filename)).suffix
@@ -32,7 +33,7 @@ class DataSetCrator():
     def identify_hash_type(self, hash_string):
         """Identifies the type of a hash based on its length."""
         hash_length = len(hash_string)
-
+        
         if hash_length == 32 or hash_length == 35:
             md5_hash_pattern = r'\b([a-f0-9]{32})\b'
             matches = re.findall(md5_hash_pattern, hash_string)
@@ -69,7 +70,20 @@ class DataSetCrator():
         if password_match:
             password = str(password_match.group(1))
             return password 
-
+    
+    def hash_validation(self, hash_string):
+        # Validating hashes and removing any false flags
+        md5_hash_pattern = r'\b[a-f0-9]{32}\b'
+        if len(hash_string) > 35:
+            match = re.findall(md5_hash_pattern, hash_string)
+            if len(match) > 0:
+                match = '-'.join(match) 
+                return match
+            else:
+                return None
+        else:
+            return hash_string
+            
     def parsing_lines(self, line, file_suffix, data):
         hash_types = {
             'MD5':      'found',
@@ -81,6 +95,7 @@ class DataSetCrator():
         
         pattern_match = re.search(email_pattern, line)
         
+        # Working with TXT dump files
         if file_suffix == 'TXT':
             if pattern_match:
                 email = str(pattern_match.group())
@@ -96,17 +111,27 @@ class DataSetCrator():
 
                 return data
 
+        # Working with SQL files
         elif file_suffix == 'SQL':
             hash_data = line.strip().split(",")
             for hash_string in hash_data:
                 hash_type = self.identify_hash_type(hash_string)
                 if pattern_match and hash_types.get(hash_type) == 'found':
+                    # Validatie the hash before adding into a file
+                    hash_string = self.hash_validation(hash_string=hash_string)
+                
                     email = str(pattern_match.group())
-                    
+            
                     if email not in data:
                         data[email] = {"hashes": set(), "line": None} 
+            
+                    # hashes are being added here
+                    try:
+                        data[email]["hashes"].add(hash_string.replace("'", ''))
+                    except AttributeError:
+                        # If a None is returned from hash_validation then don't add anything into the csv file
+                        pass
 
-                    data[email]["hashes"].add(hash_string.replace("'", ''))
                     data[email]["line"] = str(line)
 
     def generate_file_name(self):
@@ -150,7 +175,8 @@ class DataSetCrator():
             lines = file.readlines()
             for line in lines:
                 self.parsing_lines(line=line, file_suffix=file_suffix, data=data)
-            
+
+        # Commented out for now  
         self.write_data_set(data)
 
 class BulkEmailAdder:
@@ -207,6 +233,7 @@ class BulkEmailAdder:
         all_emails_set = {item.email for item in all_emails_new_and_exisisting}
         
         # Chunking here
+        # Know the difference between hashes and password within the dataset...
         for chunk in pd.read_csv(self.filename, chunksize=500):
             emails = chunk['email']
             lines = chunk['line']
