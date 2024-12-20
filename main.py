@@ -1,9 +1,11 @@
+#!/usr/bin/env python3
 import time, subprocess, django, argparse, re, os, subprocess, sys, time
 from chardet.universaldetector import UniversalDetector
 from datetime import date
 import pathlib, csv, glob
 import pandas as pd
 from memory_profiler import profile
+import cchardet
 
 # Hard coded for now... possibly use environmentle variable
 sys.path.append('/home/leetjesus/Desktop/breachpalacev1')
@@ -105,6 +107,7 @@ class SuffixHandler():
     
     def list_wild_card_files(self, wild_card):
         file_list = []
+
         pwd = os.getcwd()
         
         for file in os.listdir(str(pwd)):
@@ -119,6 +122,7 @@ class SuffixHandler():
             self.file_opertations = DataSetCrator(filename=None, file_list=file_list)
             self.file_opertations.reading_files()
         elif '*.json' in self.filename:
+            print('Json wild card detected!')
             file_list = self.list_wild_card_files(wild_card='.json')
             self.file_opertations = DataSetCrator(filename=None, file_list=file_list)
             self.file_opertations.reading_files()
@@ -154,6 +158,7 @@ class DataSetCrator():
 
     def identify_hash_type(self, hash_string):
         """Identifies the type of a hash based on its length."""
+        # This should also validate a hash.
         hash_length = len(hash_string)
         
         if hash_length == 32 or hash_length == 35:
@@ -164,7 +169,13 @@ class DataSetCrator():
                 return 'MD5'
 
         elif hash_length == 40:
-            return "SHA-1"
+            sha1_hash_pattern = r"^[a-fA-F0-9]{40}$"
+
+            matches = re.findall(sha1_hash_pattern, hash_string)
+            
+            if matches:
+                return "SHA-1"
+        
         elif hash_length == 64:
             return "SHA-256"
         elif hash_length == 128:
@@ -172,9 +183,16 @@ class DataSetCrator():
         else:
             return "Unknown"
 
+    def faster_encoder(self, file):
+        with open('aj_userhash.sql', 'rb') as f:
+            data = f.read(4096)
+            result = cchardet.detect(data)
+    
+            return result['encoding']
+
     def identify_encoding(self, file):
-        # Handle multiple files here
-        # Left off here
+        # This will open the entire file and parse it..
+        # This is why it takes so long for this to run.
         detector = UniversalDetector()
         detector.reset()
         
@@ -187,6 +205,7 @@ class DataSetCrator():
         return detector.result['encoding']
 
     def hash_validation(self, hash_string):
+        # Wtf is this function for LOL and why is this hard-coded
         # Validating hashes and removing any false flags
         md5_hash_pattern = r'\b[a-f0-9]{32}\b'
         if len(hash_string) > 35:
@@ -198,8 +217,18 @@ class DataSetCrator():
                 return None
         else:
             return hash_string
-            
+    
+    def filter_by_lengths(self, string_listed, lengths):
+        result = [] # Store hashes found
+        
+        for string in string_listed:
+            if len(string.replace("'", "")) in lengths:
+                result.append(string.replace("'", ""))
+        
+        return result
+
     def parsing_lines(self, line, data, file_suffix):
+        hash_lengths = [40, 32, 35, 64, 128]
         hash_types = {
             'MD5':      'found',
             'SHA-1':    'found',
@@ -207,11 +236,10 @@ class DataSetCrator():
             'SHA-512':  'found'
         }
         email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
-        # file_suffix = self.identify_file_suffix()
         pattern_match = re.search(email_pattern, line)
-
-        # Working with TXT dump files
+        
         if file_suffix == 'TXT':
+            # Working with TXT dump files. Will not be looking for hashes because txt files are unpredictable. 
             if pattern_match:
                 email = str(pattern_match.group())
                 
@@ -219,28 +247,35 @@ class DataSetCrator():
                     data[email] = {"hashes": ['NNone']}
 
                 return data
-
-        # Working with SQL files
         elif file_suffix == 'SQL':
             hash_data = line.strip().split(",")
-            for hash_string in hash_data:
-                hash_type = self.identify_hash_type(hash_string)
-                if pattern_match and hash_types.get(hash_type) == 'found':
-                    # Validatie the hash before adding into a file
-                    hash_string = self.hash_validation(hash_string=hash_string)
-                
-                    email = str(pattern_match.group())
-            
-                    if email not in data:
-                        data[email] = {"hashes": set()} 
+            if pattern_match:
+                hash_list = self.filter_by_lengths(string_listed=hash_data, lengths=hash_lengths)
+                # Grab the hash list and verify that they are in fact hashes
+                for hash_string in hash_list:
+                    hash_status = self.identify_hash_type(hash_string=hash_string)
+                    if hash_types.get(hash_status):
+                        print('Good hash:', hash_string, hash_status)
+                        
+                        email = str(pattern_match.group())
+                        
+                        if email not in data:
+                            data[email] = {"hashes": set()} 
 
-                    # hashes are being added here
-                    try:
+                        # hashes are being added here
                         data[email]["hashes"].add(hash_string.replace("'", ''))
-                    except AttributeError as e:
-                        # If a None is returned from hash_validation then don't add anything into the csv file
-                        pass
+                        
+            return data
 
+        elif file_suffix == 'JSON':
+            if pattern_match:
+                email = str(pattern_match.group())
+                
+                if email not in data:
+                    data[email] = {"hashes": ['NNone']}
+
+                return data
+            
     def generate_file_name(self):
         today = date.today()
         base_name = f"{today}-dataset"
@@ -285,23 +320,29 @@ class DataSetCrator():
 
     def reading_files(self):
         data = {}
-        count = 0
+        counter = 0
         try:
             # Writing to multiple files
             if len(self.file_list) != 0:
-                # This can be cleaned up in encpasulated within a function
+                # Note: This can be cleaned up in encpasulated within a function
                 for fileName in self.file_list:
-                    encoder = self.identify_encoding(file=fileName)
+                    # encoder = self.identify_encoding(file=fileName)
+                    encoder = self.faster_encoder(file=fileName)
                     suffix = self.identify_file_suffix(file=fileName)
+                    counter += 1
+                    print(f'Currently on {counter} out of {len(self.file_list)} files.')
                     with open(str(fileName), 'r', encoding=str(encoder)) as file:
                         for line in file:
                             self.parsing_lines(line=line, data=data, file_suffix=suffix)
                     
                     self.data[fileName] = data
+
                 updated_dict_data = self.compare_keys_remove_duplicates()
         except TypeError:
             # Writing solo files
             if self.filename:
+                data = {}
+                # identify_encoding function is causing to open the file twice. For very large files this can take up time
                 encoder = self.identify_encoding(file=self.filename)
                 suffix = self.identify_file_suffix(file=self.filename)
                 with open(str(self.filename), 'r', encoding=str(encoder)) as file:
@@ -309,9 +350,12 @@ class DataSetCrator():
                         self.parsing_lines(line=line, data=data, file_suffix=suffix)
                     
                 self.data[self.filename] = data
+                
                 updated_dict_data = self.compare_keys_remove_duplicates()
             else:
-                print('Nothing was found')
+                print('Problem occurred. Exiting.')
+                
+        print('Done')
         self.write_data_set(updated_dict_data)
 
 class BulkEmailAdder:
@@ -402,7 +446,6 @@ class BulkEmailAdder:
         except KeyError:
             return 'not_found'
 
-# @profile used for reading mem usage
 def main():
     parser = argparse.ArgumentParser(description="This script is to be used for creating datasets from data dumps.")
     parser.add_argument('-f', '--filename', help='Enter breach data filename, emails, passwords and lines will be extracted from this file.')
@@ -426,11 +469,11 @@ def main():
         elif value == 'not_found':
             print('The model name you entered was not found in the django database. Please create the model first.')
             sys.exit()
+
     elif args.filename:
-        file_opertations = DataSetCrator(filename=args.filename)
-        # This logic here needs to change a bit...
-        file_opertations.multiple_files_check()
-        file_opertations.reading_files()
+        print('Parsing file(s) specified.')
+        handle_suffix = SuffixHandler(filename=args.filename)
+        handle_suffix.detect_wild_card()
     elif args.newmodel:
         print('Creating breach info first...')
         newModel = BreachDetails(modelName=args.newmodel, description=args.modelinfo, breachDate=args.breachdate, addedDate=args.addeddate, emailCount=args.emailcount)
@@ -441,6 +484,4 @@ def main():
         modelPath.verify_paths()
 
 if __name__ == "__main__":
-    # main()
-    handle_suffix = SuffixHandler(filename='*.sql')
-    handle_suffix.detect_wild_card()
+    main()
