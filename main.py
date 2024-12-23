@@ -18,6 +18,7 @@ from backend_api.models import *
 from databreaches.models import *
 
 class BreachDetails:
+    # To make life easy you should add metadata from a csv file here instead.
     def __init__(self, modelName, description, breachDate, addedDate, emailCount):
         self.modelName = modelName
         self.description = description
@@ -183,52 +184,37 @@ class DataSetCrator():
         else:
             return "Unknown"
 
-    def faster_encoder(self, file):
-        with open('aj_userhash.sql', 'rb') as f:
-            data = f.read(4096)
-            result = cchardet.detect(data)
-    
-            return result['encoding']
-
     def identify_encoding(self, file):
         # This will open the entire file and parse it..
         # This is why it takes so long for this to run.
         detector = UniversalDetector()
         detector.reset()
-        
-        for line in open(file, 'rb'):
-            detector.feed(line)
-            if detector.done: break
-        
-        detector.close()
-        
-        return detector.result['encoding']
+        try:
+            for line in open(file, 'rb'):
+                detector.feed(line)
+                if detector.done: break
 
-    def hash_validation(self, hash_string):
-        # Wtf is this function for LOL and why is this hard-coded
-        # Validating hashes and removing any false flags
-        md5_hash_pattern = r'\b[a-f0-9]{32}\b'
-        if len(hash_string) > 35:
-            match = re.findall(md5_hash_pattern, hash_string)
-            if len(match) > 0:
-                match = '-'.join(match) 
-                return match
-            else:
-                return None
-        else:
-            return hash_string
-    
-    def filter_by_lengths(self, string_listed, lengths):
+            detector.close()
+
+            return detector.result['encoding']
+        except FileNotFoundError:
+            print('File not found.')
+            sys.exit()
+ 
+    def filter_by_lengths(self, string_listed):
         result = [] # Store hashes found
+        
+        # General hash character lengths 
+        lengths = [40, 32, 33, 34, 35, 64, 128]
         
         for string in string_listed:
             if len(string.replace("'", "")) in lengths:
-                result.append(string.replace("'", ""))
+                result.append(string.replace("'", "").replace(" ", ""))
         
         return result
 
     def parsing_lines(self, line, data, file_suffix):
-        hash_lengths = [40, 32, 35, 64, 128]
+        # The problem here is that it will only parse one hash when it needs to do them all...
         hash_types = {
             'MD5':      'found',
             'SHA-1':    'found',
@@ -239,32 +225,48 @@ class DataSetCrator():
         pattern_match = re.search(email_pattern, line)
         
         if file_suffix == 'TXT':
-            # Working with TXT dump files. Will not be looking for hashes because txt files are unpredictable. 
+            # EVEN IF NO HASHES ARE FOUND IT STILL NEEDS TO ADD IT INTO A DICT OR LIST OF EMAILS
             if pattern_match:
+                # What if I add the hash first into the dictionary and do everything after? 
+                # Left off here
                 email = str(pattern_match.group())
-                
+                # Add emails into data dict even if they're a None
                 if email not in data:
-                    data[email] = {"hashes": ['NNone']}
+                    data[email] = {"hashes": set()}
 
-                return data
-        elif file_suffix == 'SQL':
-            hash_data = line.strip().split(",")
-            if pattern_match:
-                hash_list = self.filter_by_lengths(string_listed=hash_data, lengths=hash_lengths)
-                # Grab the hash list and verify that they are in fact hashes
+                # Removing all white spaces and add a seperator between strings.
+                line = ",".join(line.split())
+                
+                # Chain multiple characters to be replaced with seperators.
+                line = line.replace(" ", ",").replace(":", ",")
+
+                # Convert the line into a list.
+                line = line.strip().split(",")
+                hash_list = self.filter_by_lengths(string_listed=line)
+
                 for hash_string in hash_list:
                     hash_status = self.identify_hash_type(hash_string=hash_string)
                     if hash_types.get(hash_status):
-                        print('Good hash:', hash_string, hash_status)
-                        
-                        email = str(pattern_match.group())
-                        
-                        if email not in data:
-                            data[email] = {"hashes": set()} 
+                        data[email]["hashes"].add(hash_string.replace("'", ''))
+            
+            return data
 
+        elif file_suffix == 'SQL':
+            hash_data = line.strip().split(",")
+            if pattern_match:
+                email = str(pattern_match.group())
+                # Add emails into data dict even if they're a None
+                if email not in data:
+                    data[email] = {"hashes": set()}
+                
+                hash_list = self.filter_by_lengths(string_listed=hash_data)
+        
+                for hash_string in hash_list:
+                    hash_status = self.identify_hash_type(hash_string=hash_string)
+                    if hash_types.get(hash_status):
                         # hashes are being added here
                         data[email]["hashes"].add(hash_string.replace("'", ''))
-                        
+
             return data
 
         elif file_suffix == 'JSON':
@@ -275,6 +277,8 @@ class DataSetCrator():
                     data[email] = {"hashes": ['NNone']}
 
                 return data
+        elif file_suffix == 'CSV':
+            print('Still in development...')
             
     def generate_file_name(self):
         today = date.today()
@@ -292,19 +296,14 @@ class DataSetCrator():
         return file_name
 
     def write_data_set(self, data):
-        for email, hashes in data.items():
-            string = ''.join(hashes['hashes'])
-            # print(string[1:].replace(" ", '-'))
-
         filename = self.generate_file_name()
-
         with open(filename, mode='w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(['email', 'hashes'])
 
             for email, hashes in data.items():
-                hash_value = ''.join(hashes['hashes'])
-                writer.writerow([email, hash_value[1:].replace(" ", '-')]) 
+                hash_value = '-'.join(hashes['hashes'])
+                writer.writerow([email, hash_value]) 
 
     def compare_keys_remove_duplicates(self):
         # Re-creating the dict only this time combine all hashes found per email
@@ -318,16 +317,44 @@ class DataSetCrator():
 
         return final_dict
 
+    def check_hex_character(self, character):
+        # Will check if a character is a hex or not
+        try:
+            int(character, 16)
+            return True
+        except ValueError:
+            pass
+    
+    def determine_common_encoding(self, hex_value):
+        encodings = {
+            "ascii": (0x00, 0x7F),               # 7-bit ASCII
+            "ISO-8859-1": (0x00, 0xFF), # 8-bit extended Latin-1
+            "UTF-8": (0x00, 0x7F),       # UTF-8 overlaps ASCII for single-byte
+            "UTF-16)": (0x0000, 0xFFFF),     # Basic Multilingual Plane
+            "UTF-32": (0x0000, 0x10FFFF),         # Full Unicode range
+            "Windows-1252": (0x00, 0xFF),         # Similar to ISO-8859-1
+            "Shift_JIS": (0x81, 0x9F),            # Specific ranges for Japanese
+            "EUC-JP": (0xA1, 0xFE),               # Japanese encodings
+            "GB2312": (0xA1, 0xFE), # Chinese range
+            "Big5": (0xA1, 0xFE),  # Traditional range
+        }
+
+        matches = []
+        for encoding, (min_val, max_val) in encodings.items():
+            if min_val <= hex_value <= max_val:
+                matches.append(encoding)
+        
+        return matches if matches else ["Unknown encoding"]
+
     def reading_files(self):
         data = {}
         counter = 0
         try:
-            # Writing to multiple files
+            # Reading dump multiple files
             if len(self.file_list) != 0:
                 # Note: This can be cleaned up in encpasulated within a function
                 for fileName in self.file_list:
-                    # encoder = self.identify_encoding(file=fileName)
-                    encoder = self.faster_encoder(file=fileName)
+                    encoder = self.identify_encoding(file=fileName)
                     suffix = self.identify_file_suffix(file=fileName)
                     counter += 1
                     print(f'Currently on {counter} out of {len(self.file_list)} files.')
@@ -339,24 +366,46 @@ class DataSetCrator():
 
                 updated_dict_data = self.compare_keys_remove_duplicates()
         except TypeError:
-            # Writing solo files
+            # Reading solo dump file
             if self.filename:
                 data = {}
                 # identify_encoding function is causing to open the file twice. For very large files this can take up time
                 encoder = self.identify_encoding(file=self.filename)
                 suffix = self.identify_file_suffix(file=self.filename)
-                with open(str(self.filename), 'r', encoding=str(encoder)) as file:
-                    for line in file:
-                        self.parsing_lines(line=line, data=data, file_suffix=suffix)
-                    
-                self.data[self.filename] = data
+                # ISO-8859-1 fixes the problem with this Vage.GG file
+                # File "<frozen codecs>", line 322, in decode
+                # UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe9 in position 1222: invalid continuation byte
+                try:
+                    with open(str(self.filename), 'r', encoding=str(encoder)) as file:
+                        for line in file:
+                            self.parsing_lines(line=line, data=data, file_suffix=suffix)
+                except UnicodeDecodeError as error_text:
+                    # Find hex within error text using regex
+                    hex_pattern = r"\b0x[0-9a-fA-F]+\b"
+                    matches = re.findall(hex_pattern, str(error_text))
+                    hex_validation_staus = self.check_hex_character(character=matches[0])
+                    if hex_validation_staus == True:
+                        hex_value = int(matches[0], 0)
+                        encoder = self.determine_common_encoding(hex_value=hex_value)
+                        
+                        with open(str(self.filename), 'r', encoding=str(encoder[0])) as file:
+                            for line in file:
+                                self.parsing_lines(line=line, data=data, file_suffix=suffix)
+                   
+                        self.data[self.filename] = data
+                    else:
+                        pass
                 
                 updated_dict_data = self.compare_keys_remove_duplicates()
             else:
                 print('Problem occurred. Exiting.')
-                
-        print('Done')
-        self.write_data_set(updated_dict_data)
+        except UnicodeDecodeError:
+            print('There was a unicode error!')
+    
+        print(data)
+        # print('Done')
+
+        # self.write_data_set(updated_dict_data)
 
 class BulkEmailAdder:
     def __init__(self, modelName, filename):
@@ -417,8 +466,8 @@ class BulkEmailAdder:
             emails = chunk['email']
             # This will change any NaN = (Number not found (pandas)) into a None instead
             hashes_list = chunk['hashes'].apply(lambda x: None if pd.isna(x) else x)
-            # The breachID instance will need to be changed accroding to the model name being used.. Fixed value for now
-            # Fix this value
+            
+            # (This should not be a fixed value)
             breach_id_instance = breachInfo.objects.get(name='HelloWorld')
             for email, hashes in zip(emails, hashes_list):
                 if email in all_emails_set and email in email_dict:
